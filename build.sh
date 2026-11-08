@@ -20,7 +20,7 @@ ar rcs build/shim/libshim.a build/shim/shim.o build/shim/xdg-shell.o build/shim/
 
 #   -out:build/bar  output executable
 #   -debug          include debug info
-# echo "==> building odin"
-# odin build src -out:build/bar -debug
+echo "==> building odin"
+odin build src -out:build/bar -debug
 
 echo "==> done"
