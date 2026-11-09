@@ -1,9 +1,0 @@
-{
-  "ols.server.path": "/usr/bin/ols",
-  "[odin]": {
-    "editor.defaultFormatter": "DanielGavin.ols",
-    "editor.formatOnSave": true,
-    "editor.tabSize": 4,
-    "editor.insertSpaces": false
-  }
-}
