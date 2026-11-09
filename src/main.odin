@@ -3,6 +3,7 @@ import "base:runtime"
 import "core:fmt"
 import "core:log"
 import "core:os"
+import "core:sys/linux"
 
 registry_global :: proc "c" (
 	data: rawptr,
@@ -89,16 +90,61 @@ main :: proc() {
 		"bar",
 	)
 	shim_zwlr_layer_surface_v1_add_listener(state.layer_surface, &layer_surface_listener, &state)
-	shim_zwlr_layer_surface_v1_set_size(state.layer_surface, 0, 30)
+	shim_zwlr_layer_surface_v1_set_size(state.layer_surface, 30, 0)
 	shim_zwlr_layer_surface_v1_set_anchor(
 		state.layer_surface,
-		ANCHOR_TOP | ANCHOR_LEFT | ANCHOR_RIGHT,
+		ANCHOR_TOP | ANCHOR_LEFT | ANCHOR_BOTTOM,
 	)
 	shim_zwlr_layer_surface_v1_set_exclusive_zone(state.layer_surface, 30)
 	shim_wl_surface_commit(state.surface)
 	wl_display_roundtrip(display)
-	log.info(state.width)
-	log.info(state.height)
+	fd, error := linux.memfd_create("bar", {})
+	if error != .NONE {
+		log.error("memfd_create: ", error)
+		os.exit(1)
+	}
+	size := state.height * state.width * 4
+	error = linux.ftruncate(fd, i64(size))
+	if error != .NONE {
+		log.error("ftruncate: ", error)
+		os.exit(1)
+	}
+	mem_pointer, err := linux.mmap(0, uint(size), {.READ, .WRITE}, {.SHARED}, fd, 0)
+	if err != .NONE {
+		log.error("nmap: ", err)
+		os.exit(1)
+	}
+	pixels := ([^]u32)(mem_pointer)[:state.width * state.height]
+
+
+	for &pixel, i in pixels {
+		y := i / int(state.width)
+		if (y >= 10 && y < 300) {
+			pixel = 0xFF89B4FA
+		} else {
+
+			pixel = 0xFFFF0000
+		}
+	}
+
+	width := i32(state.width)
+	height := i32(state.height)
+	pool := shim_wl_shm_create_pool(state.shm, i32(fd), i32(size))
+	buffer := shim_wl_shm_pool_create_buffer(
+		pool,
+		0,
+		width,
+		height,
+		width * 4,
+		WL_SHM_FORMAT_ARGB8888,
+	)
+
+	shim_wl_surface_attach(state.surface, buffer, 0, 0)
+	shim_wl_surface_damage_buffer(state.surface, 0, 0, width, height)
+	shim_wl_surface_commit(state.surface)
+
+	for wl_display_dispatch(display) != -1 {}
+
 	wl_display_disconnect(display)
 
 }

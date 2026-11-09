@@ -67,3 +67,23 @@ void shim_zwlr_layer_surface_v1_ack_configure(struct zwlr_layer_surface_v1 *zwlr
 {
   zwlr_layer_surface_v1_ack_configure(zwlr_layer_surface_v1, serial);
 }
+
+struct wl_shm_pool *shim_wl_shm_create_pool(struct wl_shm *shm, int32_t fd, int32_t size)
+{
+  return wl_shm_create_pool(shm, fd, size);
+}
+
+struct wl_buffer *shim_wl_shm_pool_create_buffer(struct wl_shm_pool *pool, int32_t offset, int32_t width, int32_t height, int32_t stride, uint32_t format)
+{
+  return wl_shm_pool_create_buffer(pool, offset, width, height, stride, format);
+}
+
+void shim_wl_surface_attach(struct wl_surface *surface, struct wl_buffer *buffer, int32_t x, int32_t y)
+{
+  wl_surface_attach(surface, buffer, x, y);
+}
+
+void shim_wl_surface_damage_buffer(struct wl_surface *surface, int32_t x, int32_t y, int32_t width, int32_t height)
+{
+  wl_surface_damage_buffer(surface, x, y, width, height);
+}
