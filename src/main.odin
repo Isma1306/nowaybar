@@ -38,8 +38,8 @@ layer_surface_configure :: proc "c" (
 ) {
 	context = runtime.default_context()
 	state := cast(^State)data
-	state.width = width
-	state.height = height
+	state.canvas.width = width
+	state.canvas.height = height
 	shim_zwlr_layer_surface_v1_ack_configure(surface, serial)
 }
 
@@ -53,8 +53,19 @@ State :: struct {
 	shm:           wl_shm,
 	surface:       wl_surface,
 	layer_surface: zwlr_layer_surface_v1,
-	width:         u32,
-	height:        u32,
+	canvas:        Canvas,
+}
+Canvas :: struct {
+	width:  u32,
+	height: u32,
+	pixels: []u32,
+}
+
+Rectangle :: struct {
+	position: [2]int,
+	width:    int,
+	height:   int,
+	color:    u32,
 }
 
 main :: proc() {
@@ -103,7 +114,7 @@ main :: proc() {
 		log.error("memfd_create: ", error)
 		os.exit(1)
 	}
-	size := state.height * state.width * 4
+	size := state.canvas.height * state.canvas.width * 4
 	error = linux.ftruncate(fd, i64(size))
 	if error != .NONE {
 		log.error("ftruncate: ", error)
@@ -114,21 +125,11 @@ main :: proc() {
 		log.error("nmap: ", err)
 		os.exit(1)
 	}
-	pixels := ([^]u32)(mem_pointer)[:state.width * state.height]
+	state.canvas.pixels = ([^]u32)(mem_pointer)[:state.canvas.width * state.canvas.height]
 
-
-	for &pixel, i in pixels {
-		y := i / int(state.width)
-		if (y >= 10 && y < 300) {
-			pixel = 0xFF89B4FA
-		} else {
-
-			pixel = 0xFFFF0000
-		}
-	}
-
-	width := i32(state.width)
-	height := i32(state.height)
+	draw(&state.canvas)
+	width := i32(state.canvas.width)
+	height := i32(state.canvas.height)
 	pool := shim_wl_shm_create_pool(state.shm, i32(fd), i32(size))
 	buffer := shim_wl_shm_pool_create_buffer(
 		pool,
@@ -147,4 +148,34 @@ main :: proc() {
 
 	wl_display_disconnect(display)
 
+}
+
+draw :: proc(canvas: ^Canvas) {
+	point := [2]int{2, 0}
+	rectangle(point, 28, 1044, 0xFF89B4FA, canvas)
+}
+
+rectangle :: proc(position: [2]int, width: int, height: int, color: u32, canvas: ^Canvas) {
+	row := position[1] * int(canvas.width)
+	endrow := row + (int(canvas.width) * height)
+	column := position[0]
+	endCol := position[0] + width
+	if (column + width > int(canvas.width)) {
+		log.errorf("rect ends at x=%v but canvas is only %v wide", endCol, canvas.width)
+		os.exit(1)
+	}
+	if (position[1] + height > int(canvas.height)) {
+		log.errorf(
+			"rect ends at y=%v but canvas is only %v tall",
+			position[1] + height,
+			canvas.height,
+		)
+		os.exit(1)
+	}
+	for i := row; i < endrow; i += 1 {
+		x := i % int(canvas.width)
+		if (x >= column && x < endCol) {
+			canvas.pixels[i] = color
+		}
+	}
 }
