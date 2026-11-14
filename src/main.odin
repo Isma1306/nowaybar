@@ -54,18 +54,35 @@ State :: struct {
 	surface:       wl_surface,
 	layer_surface: zwlr_layer_surface_v1,
 	canvas:        Canvas,
+	bar_width:     u32,
 }
 Canvas :: struct {
 	width:  u32,
 	height: u32,
 	pixels: []u32,
 }
-
+Axis :: enum {
+	X,
+	Y,
+}
 Rectangle :: struct {
-	position: [2]int,
-	width:    int,
-	height:   int,
-	color:    u32,
+	pos:    [Axis]int,
+	width:  int,
+	height: int,
+	color:  u32,
+}
+
+Workspace_info :: struct {
+	id:              int,
+	name:            string,
+	monitor:         string,
+	monitorID:       int,
+	windows:         int,
+	hasfullscreen:   bool,
+	lastwindow:      string,
+	lastwindowtitle: string,
+	ispersistent:    bool,
+	tiledLayout:     string,
 }
 
 main :: proc() {
@@ -77,6 +94,7 @@ main :: proc() {
 		return
 	}
 	state := State{}
+	state.bar_width = 30
 	registry := shim_wl_display_get_registry(display)
 	register_listener := wl_registry_listener {
 		global        = registry_global,
@@ -101,12 +119,12 @@ main :: proc() {
 		"bar",
 	)
 	shim_zwlr_layer_surface_v1_add_listener(state.layer_surface, &layer_surface_listener, &state)
-	shim_zwlr_layer_surface_v1_set_size(state.layer_surface, 30, 0)
+	shim_zwlr_layer_surface_v1_set_size(state.layer_surface, state.bar_width, 0)
 	shim_zwlr_layer_surface_v1_set_anchor(
 		state.layer_surface,
 		ANCHOR_TOP | ANCHOR_LEFT | ANCHOR_BOTTOM,
 	)
-	shim_zwlr_layer_surface_v1_set_exclusive_zone(state.layer_surface, 30)
+	shim_zwlr_layer_surface_v1_set_exclusive_zone(state.layer_surface, i32(state.bar_width))
 	shim_wl_surface_commit(state.surface)
 	wl_display_roundtrip(display)
 	fd, error := linux.memfd_create("bar", {})
@@ -151,31 +169,90 @@ main :: proc() {
 }
 
 draw :: proc(canvas: ^Canvas) {
-	point := [2]int{2, 0}
-	rectangle(point, 28, 1044, 0xFF89B4FA, canvas)
+
+	background := Rectangle {
+		color = 0xFF89B4FA,
+		pos = {.X = 0, .Y = 0},
+		height = int(canvas.height),
+		width = int(canvas.width),
+	}
+
+	draw_rectangle(background, [Axis]int{}, canvas)
+
+	workspaces_box := Rectangle {
+		color = 0xFF890000,
+		pos = {.X = 0, .Y = 20},
+		width = int(canvas.width),
+	}
+	workspaces_list := []Workspace_info{{id = 1}, {id = 2}, {id = 3}}
+	active_workspace := 2
+	draw_workspaces(workspaces_list, active_workspace, 5, workspaces_box, background.pos, canvas)
 }
 
-rectangle :: proc(position: [2]int, width: int, height: int, color: u32, canvas: ^Canvas) {
-	row := position[1] * int(canvas.width)
-	endrow := row + (int(canvas.width) * height)
-	column := position[0]
-	endCol := position[0] + width
+draw_rectangle :: proc(rec: Rectangle, origin: [Axis]int, canvas: ^Canvas) {
+	width := rec.width
+	height := rec.height
+	abs_pos := rec.pos + origin
+	column := abs_pos[.X]
 	if (column + width > int(canvas.width)) {
-		log.errorf("rect ends at x=%v but canvas is only %v wide", endCol, canvas.width)
-		os.exit(1)
+		log.warnf("rect ends at x=%v but canvas is only %v wide", column + width, canvas.width)
+		width = int(canvas.width) - column
 	}
-	if (position[1] + height > int(canvas.height)) {
-		log.errorf(
+	if (abs_pos[.Y] + rec.height > int(canvas.height)) {
+		log.warnf(
 			"rect ends at y=%v but canvas is only %v tall",
-			position[1] + height,
+			abs_pos[.Y] + rec.height,
 			canvas.height,
 		)
-		os.exit(1)
+		height = int(canvas.height) - abs_pos[.Y]
 	}
-	for i := row; i < endrow; i += 1 {
-		x := i % int(canvas.width)
-		if (x >= column && x < endCol) {
-			canvas.pixels[i] = color
+	row := abs_pos[.Y] * int(canvas.width)
+	endrow := row + (int(canvas.width) * height)
+	for row_start := row + column; row_start < endrow; row_start += int(canvas.width) {
+		for x := row_start; x < row_start + width; x += 1 {
+			canvas.pixels[x] = rec.color
 		}
+
+	}
+}
+
+
+center :: proc(rec: ^Rectangle, container_size: int, axis: Axis) {
+	space := 0
+	if (axis == .X) {
+		space = container_size - rec.width
+	} else {
+		space = container_size - rec.height
+	}
+	if (space >= 0) {
+		rec.pos[axis] = space / 2
+	}
+}
+
+draw_workspaces :: proc(
+	list: []Workspace_info,
+	active_workspace: int,
+	padding: int,
+	rec: Rectangle,
+	origin: [Axis]int,
+	canvas: ^Canvas,
+) {
+	rec := rec
+	item_size := rec.width - (padding * 2)
+	rec.height = len(list) * (padding + item_size) + padding
+	draw_rectangle(rec, origin, canvas)
+	workspace := Rectangle {
+		color  = 0xFF00B4FA,
+		height = item_size,
+		width  = item_size,
+	}
+	center(&workspace, rec.width, .X)
+	for i := 0; i < len(list); i += 1 {
+		item := workspace
+		item.pos[.Y] = (i * (item_size + padding)) + padding
+		if (list[i].id == active_workspace) {
+			item.color = 0xFF0000FA
+		}
+		draw_rectangle(item, origin + rec.pos, canvas)
 	}
 }
