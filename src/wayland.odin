@@ -49,6 +49,8 @@ foreign wl {
 	wl_display_disconnect :: proc(display: wl_display) ---
 	wl_display_roundtrip :: proc(display: wl_display) -> c.int ---
 	wl_display_dispatch :: proc(display: wl_display) -> c.int ---
+	wl_display_get_fd :: proc(display: wl_display) -> c.int ---
+	wl_display_flush :: proc(display: wl_display) -> c.int ---
 }
 
 foreign shim {
