@@ -4,7 +4,7 @@ import "core:fmt"
 import "core:log"
 import "core:os"
 import "core:sys/linux"
-
+import stbtt "vendor:stb/truetype"
 
 registry_global :: proc "c" (
 	data: rawptr,
@@ -58,6 +58,7 @@ State :: struct {
 	bar_width:        u32,
 	active_workspace: int,
 	workspace_list:   []Workspace_info,
+	fontinfo:         stbtt.fontinfo,
 }
 
 
@@ -134,7 +135,7 @@ main :: proc() {
 		width * 4,
 		WL_SHM_FORMAT_ARGB8888,
 	)
-
+	get_font(&state)
 	set_active_workspace(&state)
 	set_workspaces(&state)
 
