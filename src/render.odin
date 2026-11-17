@@ -1,6 +1,7 @@
 package main
 
 import "core:log"
+import "core:math"
 import "core:os"
 import stbtt "vendor:stb/truetype"
 Canvas :: struct {
@@ -105,21 +106,24 @@ draw_workspaces :: proc(
 		}
 		draw_rectangle(item, origin + rec.pos, canvas)
 		if (state.workspace_list[i].type == "special") {
-			draw_char('S', state, origin + rec.pos + item.pos)
+			draw_char(
+				'\U000f0ddc',
+				&state.fontinfo_icon,
+				item_size,
+				state,
+				origin + rec.pos + item.pos,
+			)
 		} else {
 
 			for r in state.workspace_list[i].name {
-				draw_char(rune(r), state, origin + rec.pos + item.pos)
+				draw_char(rune(r), &state.fontinfo, item_size, state, origin + rec.pos + item.pos)
 			}
 		}
 	}
 }
 
-get_font :: proc(state: ^State) {
-	font_bytes, err := os.read_entire_file_from_path(
-		"/usr/share/fonts/noto/NotoSansMono-Bold.ttf",
-		context.allocator,
-	)
+get_font :: proc(path: string, is_icon: bool, state: ^State) {
+	font_bytes, err := os.read_entire_file_from_path(path, context.allocator)
 	if (err != nil) {
 
 		log.error("read_entire_file: ", err)
@@ -134,29 +138,72 @@ get_font :: proc(state: ^State) {
 		os.exit(1)
 
 	}
-	state.fontinfo = info
+	if (is_icon) {
+		state.fontinfo_icon = info
+	} else {
+		state.fontinfo = info
+	}
 }
 
-get_char :: proc(state: ^State, char: rune) -> (bytes: []u8, w: i32, h: i32) {
-	scale := stbtt.ScaleForPixelHeight(&state.fontinfo, 14)
-	xoff := i32(0)
-	yoff := i32(0)
-	pointer := stbtt.GetCodepointBitmap(&state.fontinfo, scale, scale, char, &w, &h, &xoff, &yoff)
-	return ([^]u8)(pointer)[:w * h], w, h
+get_char :: proc(
+	font: ^stbtt.fontinfo,
+	char: rune,
+	scale, shift_x, shift_y: f32,
+) -> (
+	bytes: []u8,
+	w, h, xoff, yoff: i32,
+) {
+	pointer := stbtt.GetCodepointBitmapSubpixel(
+		font,
+		scale,
+		scale,
+		shift_x,
+		shift_y,
+		char,
+		&w,
+		&h,
+		&xoff,
+		&yoff,
+	)
+	return ([^]u8)(pointer)[:w * h], w, h, xoff, yoff
 }
 
-draw_char :: proc(char: rune, state: ^State, origin: [Axis]int) {
+draw_char :: proc(
+	char: rune,
+	font: ^stbtt.fontinfo,
+	container_size: int,
+	state: ^State,
+	origin: [Axis]int,
+) {
 	color: u32 = 0xFFFFFFFF
-	char_map, width, height := get_char(state, char)
+	scale := stbtt.ScaleForPixelHeight(font, 16)
+
+	// The glyph's outline box, in font units (y grows UP in fonts).
+	// These are exact numbers, not rounded to pixels.
+	x0, y0, x1, y1: i32
+	stbtt.GetCodepointBox(font, char, &x0, &y0, &x1, &y1)
+	glyph_w := f32(x1 - x0) * scale
+	glyph_h := f32(y1 - y0) * scale
+
+	// Where the outline's left/top edge should be to sit in the exact
+	// middle. Usually a fraction, e.g. 4.6 px.
+	left := (f32(container_size) - glyph_w) / 2
+	top := (f32(container_size) - glyph_h) / 2
+
+	// Split that into whole pixels + a leftover fraction. stb draws the
+	// glyph already shifted by the fraction ("subpixel"), and we place
+	// the bitmap at the whole-pixel part.
+	anchor_x := left - f32(x0) * scale
+	anchor_y := top + f32(y1) * scale
+	shift_x := anchor_x - math.floor(anchor_x)
+	shift_y := anchor_y - math.floor(anchor_y)
+
+	char_map, width, height, xoff, yoff := get_char(font, char, scale, shift_x, shift_y)
+	defer stbtt.FreeBitmap(raw_data(char_map), nil)
 	w := int(width)
 	h := int(height)
-	box := Rectangle {
-		width  = w,
-		height = h,
-	}
-
-	center(&box, 20, .X)
-	center(&box, 20, .Y)
+	pos_x := int(math.floor(anchor_x)) + int(xoff)
+	pos_y := int(math.floor(anchor_y)) + int(yoff)
 
 	for gy := 0; gy < h; gy += 1 {
 		for gx := 0; gx < w; gx += 1 {
@@ -165,14 +212,11 @@ draw_char :: proc(char: rune, state: ^State, origin: [Axis]int) {
 				continue
 			}
 			index :=
-				u32(origin[.Y] + gy + box.pos[.Y]) * state.canvas.width +
-				u32(origin[.X] + gx + box.pos[.X])
+				u32(origin[.Y] + gy + pos_y) * state.canvas.width + u32(origin[.X] + gx + pos_x)
 			state.canvas.pixels[index] = blend(state.canvas.pixels[index], color, a)
 		}
 
 	}
-
-	stbtt.FreeBitmap(raw_data(char_map), nil)
 }
 
 blend :: proc(bg: u32, fg: u32, a: u8) -> u32 {

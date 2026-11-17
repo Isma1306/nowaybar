@@ -59,6 +59,7 @@ State :: struct {
 	active_workspace: int,
 	workspace_list:   []Workspace_info,
 	fontinfo:         stbtt.fontinfo,
+	fontinfo_icon:    stbtt.fontinfo,
 	workspace_arena:  virtual.Arena,
 	cutted_info:      [dynamic]u8,
 }
@@ -141,7 +142,8 @@ main :: proc() {
 		width * 4,
 		WL_SHM_FORMAT_ARGB8888,
 	)
-	get_font(&state)
+	get_font("./fonts/NotoSansMono-Bold.ttf", false, &state)
+	get_font("./fonts/SymbolsNerdFontMono-Regular.ttf", true, &state)
 	set_active_workspace(&state)
 	set_workspaces(&state)
 
