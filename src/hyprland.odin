@@ -2,6 +2,7 @@ package main
 
 import "core:encoding/json"
 import "core:log"
+import "core:mem/virtual"
 import "core:os"
 import "core:slice"
 import "core:strconv"
@@ -20,6 +21,7 @@ Workspace_info :: struct {
 	lastwindowtitle: string,
 	ispersistent:    bool,
 	tiledLayout:     string,
+	type:            string,
 }
 
 get_socket :: proc(filename: string) -> (string, bool) {
@@ -67,7 +69,12 @@ set_workspaces :: proc(state: ^State) {
 		log.error("req_hypr")
 		os.exit(1)
 	}
-	err := json.unmarshal(raw_bytes, &workspace_list, allocator = context.allocator)
+	virtual.arena_free_all(&state.workspace_arena)
+	err := json.unmarshal(
+		raw_bytes,
+		&workspace_list,
+		allocator = virtual.arena_allocator(&state.workspace_arena),
+	)
 	if err != nil {
 		log.error("json.unmarshal: ", err)
 		os.exit(1)
@@ -134,12 +141,20 @@ handle_hyprland :: proc(fd: linux.Fd, state: ^State) -> bool {
 		os.exit(1)
 	}
 	changed := false
-	msg_lines := strings.split_lines(string(buf[:n]), context.temp_allocator)
-	for line in msg_lines {
-		splitted := strings.split(line, ">>", context.temp_allocator)
-		if (len(splitted) == 2) {
+	refresh_list := false
 
-			if (splitted[0] == "workspacev2") {
+	append(&state.cutted_info, ..buf[:n])
+	msg_lines := strings.split_lines(string(state.cutted_info[:]), context.temp_allocator)
+
+	handled := len(state.cutted_info) - len(msg_lines[len(msg_lines) - 1])
+
+	for line in msg_lines[:len(msg_lines) - 1] {
+
+		splitted := strings.split(line, ">>", context.temp_allocator)
+
+		if (len(splitted) == 2) {
+			switch splitted[0] {
+			case "workspacev2":
 				parts := strings.index_byte(splitted[1], ',')
 				if (parts != -1) {
 					active_workspace, ok := strconv.parse_int(splitted[1][:parts])
@@ -150,9 +165,16 @@ handle_hyprland :: proc(fd: linux.Fd, state: ^State) -> bool {
 						changed = true
 					}
 				}
+			case "createworkspacev2", "destroyworkspacev2":
+				changed = true
+				refresh_list = true
 			}
 		}
 	}
+	if refresh_list {
+		set_workspaces(state)
+	}
+	remove_range(&state.cutted_info, 0, handled)
 	free_all(context.temp_allocator)
 
 	return changed

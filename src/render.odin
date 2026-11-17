@@ -104,8 +104,13 @@ draw_workspaces :: proc(
 			item.color = 0xFF0000FA
 		}
 		draw_rectangle(item, origin + rec.pos, canvas)
-		for r in state.workspace_list[i].name {
-			draw_char(rune(r), state, origin + rec.pos + item.pos)
+		if (state.workspace_list[i].type == "special") {
+			draw_char('S', state, origin + rec.pos + item.pos)
+		} else {
+
+			for r in state.workspace_list[i].name {
+				draw_char(rune(r), state, origin + rec.pos + item.pos)
+			}
 		}
 	}
 }

@@ -1,7 +1,7 @@
 package main
 import "base:runtime"
-import "core:fmt"
 import "core:log"
+import "core:mem/virtual"
 import "core:os"
 import "core:sys/linux"
 import stbtt "vendor:stb/truetype"
@@ -59,13 +59,14 @@ State :: struct {
 	active_workspace: int,
 	workspace_list:   []Workspace_info,
 	fontinfo:         stbtt.fontinfo,
+	workspace_arena:  virtual.Arena,
+	cutted_info:      [dynamic]u8,
 }
 
 
 main :: proc() {
-	fmt.println("Start!")
 	context.logger = log.create_console_logger()
-
+	log.info("Start!")
 	display := wl_display_connect(nil)
 	if display == nil {
 		log.error("no display!")
@@ -74,6 +75,11 @@ main :: proc() {
 	wayland_fd := wl_display_get_fd(display)
 	state := State{}
 	state.bar_width = 30
+	arena_err := virtual.arena_init_growing(&state.workspace_arena)
+	if (arena_err != nil) {
+		log.error("arena_err :", arena_err)
+		os.exit(1)
+	}
 	registry := shim_wl_display_get_registry(display)
 	register_listener := wl_registry_listener {
 		global        = registry_global,
