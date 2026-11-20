@@ -24,6 +24,15 @@ registry_global :: proc "c" (
 	if (interface == "zwlr_layer_shell_v1") {
 		state.layer_shell = shim_bind_layer_shell(registry, name, min(version, 4))
 	}
+	if (interface == "wl_seat") {
+		state.seat = shim_bind_seat(registry, name, min(version, 4))
+
+		state.seat_listener = wl_seat_listener {
+			capabilities = seat_capabilities,
+			name         = seat_name,
+		}
+		shim_wl_seat_add_listener(state.seat, &state.seat_listener, state)
+	}
 }
 
 registry_global_remove :: proc "c" (data: rawptr, registry: wl_registry, name: u32) {
@@ -48,6 +57,78 @@ layer_surface_closed :: proc "c" (data: rawptr, surface: zwlr_layer_surface_v1) 
 	context = runtime.default_context()
 }
 
+seat_capabilities :: proc "c" (data: rawptr, seat: wl_seat, capabilities: u32) {
+	context = runtime.default_context()
+	context.logger = log.create_console_logger()
+	state := cast(^State)data
+	if capabilities & WL_SEAT_CAPABILITY_POINTER != 0 {
+		log.info(capabilities)
+		state.wl_pointer = shim_wl_seat_get_pointer(seat)
+		state.pointer_listener = wl_pointer_listener {
+			enter  = enter_listener,
+			leave  = leave_listener,
+			motion = motion_listener,
+			button = button_listener,
+			axis   = axis_listener,
+		}
+		shim_wl_pointer_add_listener(state.wl_pointer, &state.pointer_listener, state)
+	}
+}
+seat_name :: proc "c" (data: rawptr, seat: wl_seat, name: cstring) {
+}
+
+
+enter_listener :: proc "c" (
+	data: rawptr,
+	pointer: wl_pointer,
+	serial: u32,
+	surface: wl_surface,
+	surface_x: wl_fixed_t,
+	surface_y: wl_fixed_t,
+) {
+	context = runtime.default_context()
+	context.logger = log.create_console_logger()
+	log.info(surface_x / 256, surface_y / 256)
+}
+leave_listener :: proc "c" (data: rawptr, pointer: wl_pointer, serial: u32, surface: wl_surface) {
+
+}
+
+motion_listener :: proc "c" (
+	data: rawptr,
+	pointer: wl_pointer,
+	time: u32,
+	surface_x: wl_fixed_t,
+	surface_y: wl_fixed_t,
+) {
+	context = runtime.default_context()
+	context.logger = log.create_console_logger()
+	log.info(surface_x / 256, surface_y / 256)
+}
+button_listener :: proc "c" (
+	data: rawptr,
+	pointer: wl_pointer,
+	serial: u32,
+	time: u32,
+	button: u32,
+	state: Button_states,
+) {
+
+}
+
+axis_listener :: proc "c" (
+	data: rawptr,
+	pointer: wl_pointer,
+	time: u32,
+	axis: Pointer_axis,
+	value: wl_fixed_t,
+) {
+	context = runtime.default_context()
+	context.logger = log.create_console_logger()
+	log.info(axis)
+}
+
+
 State :: struct {
 	compositor:       wl_compositor,
 	layer_shell:      zwlr_layer_shell_v1,
@@ -62,6 +143,10 @@ State :: struct {
 	fontinfo_icon:    stbtt.fontinfo,
 	workspace_arena:  virtual.Arena,
 	cutted_info:      [dynamic]u8,
+	seat:             wl_seat,
+	wl_pointer:       wl_pointer,
+	seat_listener:    wl_seat_listener,
+	pointer_listener: wl_pointer_listener,
 }
 
 
@@ -113,6 +198,8 @@ main :: proc() {
 	shim_zwlr_layer_surface_v1_set_exclusive_zone(state.layer_surface, i32(state.bar_width))
 	shim_wl_surface_commit(state.surface)
 	wl_display_roundtrip(display)
+
+
 	fd, error := linux.memfd_create("bar", {})
 	if error != .NONE {
 		log.error("memfd_create: ", error)
