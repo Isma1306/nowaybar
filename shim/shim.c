@@ -87,3 +87,23 @@ void shim_wl_surface_damage_buffer(struct wl_surface *surface, int32_t x, int32_
 {
   wl_surface_damage_buffer(surface, x, y, width, height);
 }
+
+struct wl_seat *shim_bind_seat(struct wl_registry *registry, uint32_t name, uint32_t version)
+{
+  return wl_registry_bind(registry, name, &wl_seat_interface, version);
+}
+
+int shim_wl_seat_add_listener(struct wl_seat *seat, const struct wl_seat_listener *listener, void *data)
+{
+  return wl_seat_add_listener(seat, listener, data);
+}
+
+struct wl_pointer *shim_wl_seat_get_pointer(struct wl_seat *seat)
+{
+  return wl_seat_get_pointer(seat);
+}
+
+int shim_wl_pointer_add_listener(struct wl_pointer *pointer, const struct wl_pointer_listener *listener, void *data)
+{
+  return wl_pointer_add_listener(pointer, listener, data);
+}

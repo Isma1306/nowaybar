@@ -10,6 +10,7 @@ ANCHOR_BOTTOM :: 2
 ANCHOR_LEFT :: 4
 ANCHOR_RIGHT :: 8
 WL_SHM_FORMAT_ARGB8888 :: 0
+WL_SEAT_CAPABILITY_POINTER :: 1
 
 // -------------- //
 wl_display :: distinct rawptr
@@ -22,6 +23,9 @@ zwlr_layer_shell_v1 :: distinct rawptr
 zwlr_layer_surface_v1 :: distinct rawptr
 wl_shm_pool :: distinct rawptr
 wl_buffer :: distinct rawptr
+wl_seat :: distinct rawptr
+wl_pointer :: distinct rawptr
+wl_fixed_t :: distinct i32
 wl_registry_listener :: struct {
 	global:        proc "c" (
 		data: rawptr,
@@ -43,6 +47,55 @@ zwlr_layer_surface_v1_listener :: struct {
 	),
 	closed:    proc "c" (data: rawptr, surface: zwlr_layer_surface_v1),
 }
+
+wl_seat_listener :: struct {
+	capabilities: proc "c" (data: rawptr, seat: wl_seat, capabilities: u32),
+	name:         proc "c" (data: rawptr, seat: wl_seat, name: cstring),
+}
+
+Button_states :: enum u32 {
+	released,
+	pressed,
+}
+
+Pointer_axis :: enum u32 {
+	vertical_scroll,
+	horizontal_scroll,
+}
+wl_pointer_listener :: struct {
+	enter:  proc "c" (
+		data: rawptr,
+		pointer: wl_pointer,
+		serial: u32,
+		surface: wl_surface,
+		surface_x: wl_fixed_t,
+		surface_y: wl_fixed_t,
+	),
+	leave:  proc "c" (data: rawptr, pointer: wl_pointer, serial: u32, surface: wl_surface),
+	motion: proc "c" (
+		data: rawptr,
+		pointer: wl_pointer,
+		time: u32,
+		surface_x: wl_fixed_t,
+		surface_y: wl_fixed_t,
+	),
+	button: proc "c" (
+		data: rawptr,
+		pointer: wl_pointer,
+		serial: u32,
+		time: u32,
+		button: u32,
+		state: Button_states,
+	),
+	axis:   proc "c" (
+		data: rawptr,
+		pointer: wl_pointer,
+		time: u32,
+		axis: Pointer_axis,
+		value: wl_fixed_t,
+	),
+}
+
 
 foreign wl {
 	wl_display_connect :: proc(name: cstring) -> wl_display ---
@@ -71,4 +124,8 @@ foreign shim {
 	shim_wl_shm_pool_create_buffer :: proc(pool: wl_shm_pool, offset: i32, width: i32, height: i32, stride: i32, format: u32) -> wl_buffer ---
 	shim_wl_surface_attach :: proc(surface: wl_surface, buffer: wl_buffer, x: i32, y: i32) ---
 	shim_wl_surface_damage_buffer :: proc(surface: wl_surface, x: i32, y: i32, width: i32, height: i32) ---
+	shim_bind_seat :: proc(registry: wl_registry, name: u32, version: u32) -> wl_seat ---
+	shim_wl_seat_add_listener :: proc(seat: wl_seat, listener: ^wl_seat_listener, data: rawptr) -> c.int ---
+	shim_wl_seat_get_pointer :: proc(seat: wl_seat) -> wl_pointer ---
+	shim_wl_pointer_add_listener :: proc(pointer: wl_pointer, listener: ^wl_pointer_listener, data: rawptr) -> c.int ---
 }
